@@ -1,0 +1,43 @@
+SUMMARY = "Capstone disassembly framework"
+HOMEPAGE = "https://www.capstone-engine.org/"
+DESCRIPTION = "Capstone is a lightweight multi-platform, multi-architecture disassembly framework"
+LICENSE = "BSD-3-Clause"
+LIC_FILES_CHKSUM = "file://LICENSES/LICENSE.TXT;md5=1cfbff4f40612b0144e498a47c91499c"
+
+SRC_URI = "git://github.com/capstone-engine/capstone.git;branch=next;protocol=https"
+SRCREV = "fad9f80564501f083adc92db3ef37f999af28dd0"
+
+S = "${WORKDIR}/git"
+
+inherit cmake
+
+EXTRA_OECMAKE = " \
+    -DCAPSTONE_BUILD_SHARED=OFF \
+    -DCAPSTONE_BUILD_STATIC=ON \
+    -DCAPSTONE_BUILD_TESTS=OFF \
+    -DCAPSTONE_X86_ATT_DISABLE=ON \
+    -DCAPSTONE_ALPHA_SUPPORT=OFF \
+    -DCAPSTONE_ARC_SUPPORT=OFF \
+    -DCAPSTONE_HPPA_SUPPORT=OFF \
+    -DCAPSTONE_LOONGARCH_SUPPORT=OFF \
+    -DCAPSTONE_M680X_SUPPORT=OFF \
+    -DCAPSTONE_M68K_SUPPORT=OFF \
+    -DCAPSTONE_MIPS_SUPPORT=OFF \
+    -DCAPSTONE_MOS65XX_SUPPORT=OFF \
+    -DCAPSTONE_PPC_SUPPORT=OFF \
+    -DCAPSTONE_SPARC_SUPPORT=OFF \
+    -DCAPSTONE_SYSTEMZ_SUPPORT=OFF \
+    -DCAPSTONE_XCORE_SUPPORT=OFF \
+    -DCAPSTONE_TRICORE_SUPPORT=OFF \
+    -DCAPSTONE_TMS320C64X_SUPPORT=OFF \
+    -DCAPSTONE_EVM_SUPPORT=OFF \
+    -DCAPSTONE_WASM_SUPPORT=OFF \
+    -DCAPSTONE_BPF_SUPPORT=OFF \
+    -DCAPSTONE_SH_SUPPORT=OFF \
+    -DCAPSTONE_XTENSA_SUPPORT=OFF \
+"
+
+# Disable tools so that other processes won't search for them in the sysroot
+EXTRA_OECMAKE += " -DCAPSTONE_BUILD_CSTOOL=OFF"
+
+BBCLASSEXTEND = "native nativesdk"

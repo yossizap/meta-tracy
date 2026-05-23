@@ -1,0 +1,136 @@
+From 4342e79717c9e71dd1865a01e463810ba580f10f Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sat, 23 May 2026 17:31:00 +0300
+Subject: [PATCH] ppqsort: support older libstdc++ headers
+
+Tracy native tools use PPQSort through a host compiler that may not
+provide all C++20 library headers. Guard the optional parallel backend,
+debug sync output, ranges comparators, and bit_width helper so the
+header still builds with older libstdc++.
+
+Upstream-Status: Pending [needs upstream review for older libstdc++ compatibility]
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ include/ppqsort.h            | 20 ++++++++++++++------
+ include/ppqsort/mainloop.h   |  4 ++++
+ include/ppqsort/parameters.h | 16 ++++++++++++++--
+ 3 files changed, 32 insertions(+), 8 deletions(-)
+
+diff --git a/include/ppqsort.h b/include/ppqsort.h
+index 0325565..0e99d36 100644
+--- a/include/ppqsort.h
++++ b/include/ppqsort.h
+@@ -8,12 +8,12 @@
+ #include "ppqsort/parameters.h"
+ 
+ 
+-#ifdef FORCE_CPP
+-    #include "ppqsort/parallel/cpp/mainloop_par.h"
+-#else
+-    #ifdef _OPENMP
+-        #include "ppqsort/parallel/openmp/mainloop_par.h"
+-    #else
++#if defined(_OPENMP)
++    #define PPQSORT_HAS_PARALLEL_BACKEND 1
++    #include "ppqsort/parallel/openmp/mainloop_par.h"
++#elif defined(__has_include)
++    #if __has_include(<latch>)
++        #define PPQSORT_HAS_PARALLEL_BACKEND 1
+         #include "ppqsort/parallel/cpp/mainloop_par.h"
+     #endif
+ #endif
+@@ -43,11 +43,19 @@ namespace ppqsort::impl {
+        if constexpr (execution::_is_same_decay_v<ExecutionPolicy, decltype(execution::seq)>) {
+            seq_ppqsort(std::forward<T>(args)...);
+        } else if constexpr (execution::_is_same_decay_v<ExecutionPolicy, decltype(execution::par)>) {
++#ifdef PPQSORT_HAS_PARALLEL_BACKEND
+            par_ppqsort(std::forward<T>(args)...);
++#else
++           seq_ppqsort(std::forward<T>(args)...);
++#endif
+        } else if constexpr (execution::_is_same_decay_v<ExecutionPolicy, decltype(execution::seq_force_branchless)>) {
+            seq_ppqsort<true>(std::forward<T>(args)...);
+        } else if constexpr (execution::_is_same_decay_v<ExecutionPolicy, decltype(execution::par_force_branchless)>) {
++#ifdef PPQSORT_HAS_PARALLEL_BACKEND
+            par_ppqsort<true>(std::forward<T>(args)...);
++#else
++           seq_ppqsort<true>(std::forward<T>(args)...);
++#endif
+        } else {
+            throw std::invalid_argument("Unknown execution policy."); // this should never happen
+        }
+diff --git a/include/ppqsort/mainloop.h b/include/ppqsort/mainloop.h
+index 9ae47b2..e7f6936 100644
+--- a/include/ppqsort/mainloop.h
++++ b/include/ppqsort/mainloop.h
+@@ -1,7 +1,9 @@
+ #pragma once
+ 
+ #include <algorithm>
++#if defined(__cpp_lib_ranges)
+ #include <ranges>
++#endif
+ 
+ #include "parameters.h"
+ #include "partition.h"
+@@ -13,8 +15,10 @@ namespace ppqsort::impl {
+     template <> struct is_default_comparator<std::less<>> : std::true_type {};
+     template <class T> struct is_default_comparator<std::less<T>> : std::true_type {};
+     template <class T> struct is_default_comparator<std::greater<T>> : std::true_type {};
++#if defined(__cpp_lib_ranges)
+     template <> struct is_default_comparator<std::ranges::less> : std::true_type {};
+     template <> struct is_default_comparator<std::ranges::greater> : std::true_type {};
++#endif
+ 
+     template <typename T, class Compare>
+     using use_branchless = std::integral_constant<bool, std::is_arithmetic_v<T> &&
+diff --git a/include/ppqsort/parameters.h b/include/ppqsort/parameters.h
+index c8c9e3a..758acce 100644
+--- a/include/ppqsort/parameters.h
++++ b/include/ppqsort/parameters.h
+@@ -1,13 +1,17 @@
+ #pragma once
+ 
+ #include <bit>
+-#include <execution>
+ #include <new>
+ 
+ #ifndef NDEBUG
++    #ifdef __has_include
++        #if __has_include(<syncstream>)
++            #include <syncstream>
++            #define PPQSORT_HAS_SYNCSTREAM 1
++        #endif
++    #endif
+     #include <bitset>
+     #include <iostream>
+-    #include <syncstream>
+     #define TO_S(val) std::to_string(val)
+     #define PRINT_ITERATORS(lp, rp, msg)                               \
+         std::cout << msg << ": ";                                      \
+@@ -20,8 +24,12 @@
+     #define PRINT_VAL(str, val) (std::cout << str << ": " << std::to_string(val) << std::endl)
+     #define PRINT_BIN(str, val) (std::cout << str << ": " << std::bitset<64>(val) << std::endl)
+ 
++    #ifdef PPQSORT_HAS_SYNCSTREAM
+     #define PRINT_ATOMIC_CPP(str) \
+         std::osyncstream(std::cout) << str << std::endl;
++    #else
++    #define PRINT_ATOMIC_CPP(str) (std::cout << str << std::endl)
++    #endif
+ #else
+     #define TO_S(val)
+     #define PRINT_ITERATORS(lp, rp, msg)
+@@ -145,6 +153,10 @@ namespace ppqsort::impl {
+     template <typename diff_t>
+     constexpr diff_t log2(const unsigned long long value) {
+         // This is floor(log2(x))+1
++#if defined(__GNUC__) && __GNUC__ < 10
++        return value == 0 ? 0 : static_cast<diff_t>(sizeof(unsigned long long) * 8 - __builtin_clzll(value));
++#else
+         return static_cast<diff_t>(std::bit_width(value));
++#endif
+     }
+ } // namespace ppqsort::impl
+-- 
+2.25.1
