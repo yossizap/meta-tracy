@@ -391,17 +391,14 @@ index adbd5de9..53cf8a25 100644
  
      # pugixml
  
-@@ -278,3 +396,3 @@ if(NOT EMSCRIPTEN)
-     # libcurl
+@@ -279 +421 @@ if(NOT EMSCRIPTEN)
 -    pkg_check_modules(LIBCURL libcurl>=7.87.0)
 +    pkg_check_modules(LIBCURL libcurl)
-         add_library(TracyLibcurl INTERFACE)
-         target_include_directories(TracyLibcurl INTERFACE ${LIBCURL_INCLUDE_DIRS})
 diff --git a/cmake/server.cmake b/cmake/server.cmake
 index dc3ba42d..941ac312 100644
 --- a/cmake/server.cmake
 +++ b/cmake/server.cmake
-@@ -29,6 +29,7 @@ list(TRANSFORM TRACY_SERVER_SOURCES PREPEND "${TRACY_SERVER_DIR}/")
+@@ -30,3 +30,4 @@ list(TRANSFORM TRACY_SERVER_SOURCES PREPEND "${TRACY_SERVER_DIR}/")
 +find_package(Threads REQUIRED)
  add_library(TracyServer STATIC EXCLUDE_FROM_ALL ${TRACY_COMMON_SOURCES} ${TRACY_SERVER_SOURCES})
  target_include_directories(TracyServer PUBLIC ${TRACY_COMMON_DIR} ${TRACY_SERVER_DIR})

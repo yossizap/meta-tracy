@@ -94,6 +94,22 @@ The image installs these package groups:
 - `packagegroup-tracy-examples`: `tracy-test`, `tracy-fibers`
 - `packagegroup-tracy-client-devel`: headers, CMake config, and static client library
 
+## Tegra CUDA Check
+
+When `meta-tegra` is present, `meta-tracy` adds a dynamic layer with a small
+CUDA validation binary. The recipe only appears for Tegra machines that
+advertise the `cuda` machine feature.
+
+For a Jetson TX2 family Kirkstone build:
+
+```bash
+bitbake tracy-cuda-test
+bitbake core-image-minimal-tracy-cuda
+```
+
+The CUDA image extends `core-image-minimal-tracy` and adds `tracy-cuda-test`.
+The normal Tracy tools and examples remain in the image.
+
 ## Integrating Tracy
 
 Add the client library to your recipe:

@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sat, 30 May 2026 20:18:00 +0300
+Subject: [PATCH] TracyCUDA: support CUPTI 12 headers
+
+The CUDA 10.2 toolchain used by L4T r32 exposes CUPTI API version 12.
+Tracy's CUDA helper also references newer launch callbacks and activity
+record revisions. Keep those paths for newer CUPTI releases, but build
+against CUPTI 12 by using the activity record revisions that existed in
+that SDK and skipping memory allocation activity records that it cannot
+report with the newer MEMORY2 layout.
+
+Also route CUDA GPU context setup events through the same on-demand queue
+path as CUDA context names. Without that, a capture connection that starts
+after process launch can receive a context name before the context itself.
+
+Upstream-Status: Pending
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ public/tracy/TracyCUDA.hpp | 30 ++++++++++++++++++++++++++----
+ 1 file changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/public/tracy/TracyCUDA.hpp b/public/tracy/TracyCUDA.hpp
+index 40ff55dc..de461c02 100644
+--- a/public/tracy/TracyCUDA.hpp
++++ b/public/tracy/TracyCUDA.hpp
+@@ -35,2 +35,17 @@
+-
++#ifndef CUPTI_INVALID_STREAM_ID
++#define CUPTI_INVALID_STREAM_ID 0xFFFFFFFFu
++#endif
++
++#if CUPTI_API_VERSION <= 12
++using TracyCUptiActivityKernel = CUpti_ActivityKernel4;
++using TracyCUptiActivityMemcpy = CUpti_ActivityMemcpy;
++using TracyCUptiActivityMemset = CUpti_ActivityMemset;
++using TracyCUptiActivityCudaEvent = CUpti_ActivityCudaEvent;
++#else
++using TracyCUptiActivityKernel = CUpti_ActivityKernel9;
++using TracyCUptiActivityMemcpy = CUpti_ActivityMemcpy5;
++using TracyCUptiActivityMemset = CUpti_ActivityMemset4;
++using TracyCUptiActivityCudaEvent = CUpti_ActivityCudaEvent2;
++#endif
++
+ #ifndef UNREFERENCED
+@@ -703,11 +719,13 @@ namespace tracy
+                 // match 'callbackId' with CUpti_CallbackIdSync
+                 // interpret 'cbdata' as CUpti_SynchronizeData
+                 return;
++#if CUPTI_API_VERSION > 12
+             }
+             case CUPTI_CB_DOMAIN_STATE: {
+                 // match 'callbackId' with CUpti_CallbackIdState
+                 // interpret 'cbdata' as CUpti_StateData
+                 return;
++#endif
+             }
+             case CUPTI_CB_DOMAIN_NVTX: {
+                 // match 'callbackId' with CUpti_nvtx_api_trace_cbid
+@@ -756,8 +774,10 @@ namespace tracy
+                         // Runtime: Kernel
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000,          GET_STREAM_FUNC(cudaLaunchKernel_v7000_params, stream) },
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_ptsz_v7000,     GET_STREAM_FUNC(cudaLaunchKernel_ptsz_v7000_params, stream) },
++#if CUPTI_API_VERSION > 12
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernelExC_v11060,      GET_STREAM_FUNC(cudaLaunchKernelExC_v11060_params, config->stream) },
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernelExC_ptsz_v11060, GET_STREAM_FUNC(cudaLaunchKernelExC_ptsz_v11060_params, config->stream) },
++#endif
+                         // Runtime: Memory
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaMalloc_v3020, NON_STREAM_FUNC() },
+                         { CUPTI_RUNTIME_TRACE_CBID_cudaFree_v3020,   NON_STREAM_FUNC() },
+@@ -789,8 +809,10 @@ namespace tracy
+                         // Driver: Kernel
+                         { CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,        GET_STREAM_FUNC(cuLaunchKernel_params, hStream) },
+                         { CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel_ptsz,   GET_STREAM_FUNC(cuLaunchKernel_ptsz_params, hStream)} ,
++#if CUPTI_API_VERSION > 12
+                         { CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,      GET_STREAM_FUNC(cuLaunchKernelEx_params, config->hStream) },
+                         { CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx_ptsz, GET_STREAM_FUNC(cuLaunchKernelEx_params, config->hStream) },
++#endif
+                     };
+                     #undef NON_STREAM_FUNC
+                     #undef GET_STREAM_FUNC
+@@ -956,1 +976,1 @@ namespace tracy
+-                CUpti_ActivityKernel9* kernel9 = (CUpti_ActivityKernel9*) record;
++                TracyCUptiActivityKernel* kernel9 = (TracyCUptiActivityKernel*) record;
+@@ -967,7 +989,7 @@ namespace tracy
+             case CUPTI_ACTIVITY_KIND_MEMCPY:
+             {
+                 ZoneNamedN(kernel, "tracy::CUDACtx::DoProcessDeviceEvent[memcpy]", instrument);
+-                CUpti_ActivityMemcpy5* memcpy5 = (CUpti_ActivityMemcpy5*) record;
++                TracyCUptiActivityMemcpy* memcpy5 = (TracyCUptiActivityMemcpy*) record;
+                 APICallInfo apiCall;
+                 if (!matchActivityToAPICall(memcpy5->correlationId, apiCall)) {
+                     return matchError(memcpy5->correlationId, "MEMCPY");
+@@ -983,7 +1005,7 @@ namespace tracy
+             case CUPTI_ACTIVITY_KIND_MEMSET:
+             {
+                 ZoneNamedN(kernel, "tracy::CUDACtx::DoProcessDeviceEvent[memset]", instrument);
+-                CUpti_ActivityMemset4* memset4 = (CUpti_ActivityMemset4*) record;
++                TracyCUptiActivityMemset* memset4 = (TracyCUptiActivityMemset*) record;
+                 APICallInfo apiCall;
+                 if (!matchActivityToAPICall(memset4->correlationId, apiCall)) {
+                     return matchError(memset4->correlationId, "MEMSET");
+@@ -1030,6 +1052,7 @@ namespace tracy
+                 tracyEmitMemFree (graph_name, (void*)(uintptr_t)synchronization->correlationId,    synchronization->end);
+                 break;
+             }
++#if CUPTI_API_VERSION > 12
+             case CUPTI_ACTIVITY_KIND_MEMORY2:
+             {
+                 ZoneNamedN(kernel, "tracy::CUDACtx::DoProcessDeviceEvent[malloc/free]", instrument);
+@@ -1060,11 +1082,12 @@ namespace tracy
+                 }
+                 break;
+             }
++#endif
+             case CUPTI_ACTIVITY_KIND_CUDA_EVENT :
+             {
+                 // NOTE(marcos): a byproduct of CUPTI_ACTIVITY_KIND_SYNCHRONIZATION
+                 // (I think this is related to cudaEvent*() API calls)
+-                CUpti_ActivityCudaEvent2* event = (CUpti_ActivityCudaEvent2*)record;
++                TracyCUptiActivityCudaEvent* event = (TracyCUptiActivityCudaEvent*)record;
+                 UNREFERENCED(event);
+                 break;
+             }
+@@ -1096,1 +1120,3 @@ namespace tracy
++#if CUPTI_API_VERSION > 12
+             CUPTI_ACTIVITY_KIND_MEMORY2,
++#endif
+@@ -1269 +1294 @@ namespace tracy
+-            Profiler::QueueSerialFinish();
++            SubmitQueueItem(item);

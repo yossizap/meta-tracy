@@ -1,6 +1,8 @@
 # meta-tracy Validation Notes
 
 Validated with Poky Scarthgap on qemux86-64 using a local build directory.
+Kirkstone was also checked with qemux86-64 and with a meta-tegra Jetson TX2i
+configuration.
 
 ## Build
 
@@ -40,7 +42,7 @@ oe-run-native tracy-profiler-native tracy-profiler
 
 ## QEMU Target Runtime
 
-The target image was booted with QEMU slirp and Tracy port forwarding:
+We booted the target image with QEMU slirp and Tracy port forwarding:
 
 ```bash
 QB_SLIRP_OPT='-netdev user,id=net0,hostfwd=tcp:127.0.0.1:8086-:8086,tftp=./tmp/deploy/images/qemux86-64' \
@@ -69,6 +71,31 @@ Trace size: 12.79 MB
 
 Native CSV export parsed `host-qemu-sample.tracy`, and the native profiler
 opened it.
+
+## Tegra CUDA Build
+
+With Poky Kirkstone and meta-tegra, this layer parsed and built for
+`MACHINE = "jetson-tx2-devkit-tx2i"` using shared downloads and sstate caches.
+
+These targets completed:
+
+```bash
+bitbake tracy-cuda-test
+bitbake core-image-minimal-tracy-cuda
+```
+
+The image manifest contains:
+
+- `tracy-cuda-test`
+- `tracy-capture`
+- `tracy-csvexport`
+- `tracy-client`
+- `tracy-test`
+- `tracy-fibers`
+
+The CUDA support lives under `dynamic-layers/meta-tegra`, so BitBake only
+parses it when the `tegra` collection is present. The validation recipe
+requires the `cuda` machine feature and only matches Tegra machines.
 
 ## Notes
 

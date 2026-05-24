@@ -17,19 +17,22 @@ dependency downloads.
 - **tracy-profiler-native**: Native Tracy GUI profiler for the build host
 - **tracy-test**: Test application demonstrating Tracy features
 - **tracy-fibers**: Example demonstrating fiber tracking
+- **tracy-cuda-test**: Optional Tegra CUDA validation binary when `meta-tegra` is in `BBLAYERS`
 
 ## Dependencies
 
 This layer depends on:
 - meta (core layer)
 
+Optional integration:
+- meta-tegra, for Tegra CUDA validation builds
+
 ## Compatibility
 
 Tested:
 - Yocto Scarthgap (5.0 LTS), qemux86-64
-
-Expected:
-- Yocto Kirkstone (4.0 LTS)
+- Yocto Kirkstone (4.0 LTS), qemux86-64
+- Yocto Kirkstone (4.0 LTS), `jetson-tx2-devkit-tx2i` with meta-tegra
 
 ## Maintainer
 
@@ -60,12 +63,18 @@ and `Upstream-Status`.
    bitbake core-image-minimal-tracy
    ```
 
-4. Populate the native sysroot for host tools:
+4. With `meta-tegra` enabled, build the CUDA validation image for a Tegra
+   machine with CUDA support:
+   ```
+   bitbake core-image-minimal-tracy-cuda
+   ```
+
+5. Populate the native sysroot for host tools:
    ```
    bitbake -c addto_recipe_sysroot tracy-profiler-native tracy-capture-native tracy-csvexport-native
    ```
 
-5. Run native host tools through the Yocto native sysroot:
+6. Run native host tools through the Yocto native sysroot:
    ```
    oe-run-native tracy-capture-native tracy-capture --help
    oe-run-native tracy-csvexport-native tracy-csvexport --help
