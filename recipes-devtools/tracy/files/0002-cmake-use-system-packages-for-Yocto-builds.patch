@@ -1,0 +1,462 @@
+From 623c7d53ff5d585218016a0e4bc0bbfbdf87b848 Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sun, 24 May 2026 18:23:00 +0300
+Subject: [PATCH] cmake: use system packages for Yocto builds
+
+Add a system package mode that avoids CPM downloads and supports the
+reduced dependency set used by tracy-capture and tracy-csvexport.
+Also keep file selector code behind Tracy's NO_FILESELECTOR option so
+headless tools do not require nativefiledialog-extended, and link the
+server library to CMake's Threads target for older Yocto toolchains.
+
+Upstream-Status: Inappropriate [Yocto dependency policy]
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ cmake/server.cmake      |   3 +-
+ cmake/vendor.cmake      | 315 +++++++++++++++++++++++++++++-----------
+ profiler/CMakeLists.txt |  23 ++-
+ 3 files changed, 247 insertions(+), 95 deletions(-)
+
+diff --git a/cmake/vendor.cmake b/cmake/vendor.cmake
+index adbd5de9..53cf8a25 100644
+--- a/cmake/vendor.cmake
++++ b/cmake/vendor.cmake
+@@ -13,6 +13,20 @@ option(DOWNLOAD_GLFW "Force download glfw" OFF)
+ option(DOWNLOAD_FREETYPE "Force download freetype" OFF)
+ option(DOWNLOAD_LIBCURL "Force download libcURL" OFF)
+ option(DOWNLOAD_PUGIXML "Force download pugixml" OFF)
++option(USE_SYSTEM_PACKAGES "Use system-provided packages instead of CPM" OFF)
++option(TRACY_SERVER_TOOLS_ONLY "Configure only dependencies needed by server tools" OFF)
++
++if(USE_SYSTEM_PACKAGES)
++    set(DOWNLOAD_CAPSTONE OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_GLFW OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_FREETYPE OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_LIBCURL OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_PUGIXML OFF CACHE BOOL "" FORCE)
++    set(CPM_DOWNLOAD_ALL OFF CACHE BOOL "" FORCE)
++    set(CPM_USE_LOCAL_PACKAGES ON CACHE BOOL "" FORCE)
++    set(CPM_LOCAL_PACKAGES_ONLY ON CACHE BOOL "" FORCE)
++    set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)
++endif()
+ 
+ # capstone
+ 
+@@ -58,6 +72,54 @@ else()
+     target_link_libraries(TracyCapstone INTERFACE capstone_static)
+ endif()
+ 
++if(TRACY_SERVER_TOOLS_ONLY)
++    if(USE_SYSTEM_PACKAGES)
++        pkg_check_modules(ZSTD libzstd)
++        add_library(libzstd INTERFACE IMPORTED)
++        if(ZSTD_FOUND)
++            target_include_directories(libzstd INTERFACE ${ZSTD_INCLUDE_DIRS})
++            target_link_libraries(libzstd INTERFACE ${ZSTD_LINK_LIBRARIES})
++        else()
++            find_library(ZSTD_LIB NAMES zstd REQUIRED)
++            find_path(ZSTD_INCLUDE_DIR NAMES zstd.h REQUIRED)
++            target_include_directories(libzstd INTERFACE ${ZSTD_INCLUDE_DIR})
++            target_link_libraries(libzstd INTERFACE ${ZSTD_LIB})
++        endif()
++
++        find_path(PPQSORT_INCLUDE_DIR NAMES ppqsort.h REQUIRED)
++        add_library(PPQSort INTERFACE IMPORTED)
++        target_include_directories(PPQSort INTERFACE ${PPQSORT_INCLUDE_DIR})
++        add_library(PPQSort::PPQSort ALIAS PPQSort)
++    else()
++        CPMAddPackage(
++            NAME zstd
++            GITHUB_REPOSITORY facebook/zstd
++            GIT_TAG v1.5.7
++            OPTIONS
++                "ZSTD_BUILD_SHARED OFF"
++            EXCLUDE_FROM_ALL TRUE
++            SOURCE_SUBDIR build/cmake
++        )
++
++        CPMAddPackage(
++            NAME PPQSort
++            GITHUB_REPOSITORY GabTux/PPQSort
++            VERSION 1.0.6
++            PATCHES
++                "${CMAKE_CURRENT_LIST_DIR}/ppqsort-nodebug.patch"
++            EXCLUDE_FROM_ALL TRUE
++        )
++    endif()
++
++    set(GETOPT_DIR "${ROOT_DIR}/getopt")
++    set(GETOPT_SOURCES ${GETOPT_DIR}/getopt.c)
++    set(GETOPT_HEADERS ${GETOPT_DIR}/getopt.h)
++    add_library(TracyGetOpt STATIC EXCLUDE_FROM_ALL ${GETOPT_SOURCES} ${GETOPT_HEADERS})
++    target_include_directories(TracyGetOpt PUBLIC ${GETOPT_DIR})
++
++    return()
++endif()
++
+ # GLFW
+ 
+ if(NOT USE_WAYLAND AND NOT EMSCRIPTEN)
+@@ -106,15 +168,29 @@ endif()
+ 
+ # Zstd
+ 
+-CPMAddPackage(
+-    NAME zstd
+-    GITHUB_REPOSITORY facebook/zstd
+-    GIT_TAG v1.5.7
+-    OPTIONS
+-        "ZSTD_BUILD_SHARED OFF"
+-    EXCLUDE_FROM_ALL TRUE
+-    SOURCE_SUBDIR build/cmake
+-)
++if(USE_SYSTEM_PACKAGES)
++    pkg_check_modules(ZSTD libzstd)
++    add_library(libzstd INTERFACE IMPORTED)
++    if(ZSTD_FOUND)
++        target_include_directories(libzstd INTERFACE ${ZSTD_INCLUDE_DIRS})
++        target_link_libraries(libzstd INTERFACE ${ZSTD_LINK_LIBRARIES})
++    else()
++        find_library(ZSTD_LIB NAMES zstd REQUIRED)
++        find_path(ZSTD_INCLUDE_DIR NAMES zstd.h REQUIRED)
++        target_include_directories(libzstd INTERFACE ${ZSTD_INCLUDE_DIR})
++        target_link_libraries(libzstd INTERFACE ${ZSTD_LIB})
++    endif()
++else()
++    CPMAddPackage(
++        NAME zstd
++        GITHUB_REPOSITORY facebook/zstd
++        GIT_TAG v1.5.7
++        OPTIONS
++            "ZSTD_BUILD_SHARED OFF"
++        EXCLUDE_FROM_ALL TRUE
++        SOURCE_SUBDIR build/cmake
++    )
++endif()
+ 
+ # Diff Template Library
+ 
+@@ -134,41 +210,58 @@ target_include_directories(TracyGetOpt PUBLIC ${GETOPT_DIR})
+ 
+ # ImGui
+ 
+-CPMAddPackage(
+-    NAME ImGui
+-    GITHUB_REPOSITORY ocornut/imgui
+-    GIT_TAG v1.92.5-docking
+-    DOWNLOAD_ONLY TRUE
+-    PATCHES
+-        "${CMAKE_CURRENT_LIST_DIR}/imgui-emscripten.patch"
+-        "${CMAKE_CURRENT_LIST_DIR}/imgui-loader.patch"
+-)
+-
+-set(IMGUI_SOURCES
+-    imgui_widgets.cpp
+-    imgui_draw.cpp
+-    imgui_demo.cpp
+-    imgui.cpp
+-    imgui_tables.cpp
+-    misc/freetype/imgui_freetype.cpp
+-    backends/imgui_impl_opengl3.cpp
+-)
+-
+-list(TRANSFORM IMGUI_SOURCES PREPEND "${ImGui_SOURCE_DIR}/")
+-
+-add_library(TracyImGui STATIC EXCLUDE_FROM_ALL ${IMGUI_SOURCES})
+-target_include_directories(TracyImGui PUBLIC ${ImGui_SOURCE_DIR})
+-target_link_libraries(TracyImGui PUBLIC TracyFreetype)
+-target_compile_definitions(TracyImGui PRIVATE "IMGUI_ENABLE_FREETYPE")
+-#target_compile_definitions(TracyImGui PUBLIC "IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
+-
+-if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LEGACY)
+-    find_package(X11 REQUIRED)
+-    target_link_libraries(TracyImGui PUBLIC ${X11_LIBRARIES})
+-endif()
++if(USE_SYSTEM_PACKAGES)
++    find_path(IMGUI_INCLUDE_DIR NAMES imgui.h PATH_SUFFIXES imgui REQUIRED)
++    find_library(IMGUI_LIB NAMES imgui REQUIRED)
++    find_file(IMGUI_GLFW_BACKEND_SOURCE NAMES imgui_impl_glfw.cpp PATH_SUFFIXES imgui/backends REQUIRED)
++    set(ImGui_SOURCE_DIR ${IMGUI_INCLUDE_DIR})
++    add_library(imgui INTERFACE IMPORTED)
++    target_include_directories(imgui INTERFACE ${IMGUI_INCLUDE_DIR})
++    target_link_libraries(imgui INTERFACE ${IMGUI_LIB} ${CMAKE_DL_LIBS})
++    add_library(TracyImGui INTERFACE)
++    target_link_libraries(TracyImGui INTERFACE imgui TracyFreetype)
++    target_compile_definitions(TracyImGui INTERFACE "IMGUI_ENABLE_FREETYPE")
++    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LEGACY)
++        find_package(X11 REQUIRED)
++        target_link_libraries(TracyImGui INTERFACE ${X11_LIBRARIES})
++    endif()
++else()
++    CPMAddPackage(
++        NAME ImGui
++        GITHUB_REPOSITORY ocornut/imgui
++        GIT_TAG v1.92.5-docking
++        DOWNLOAD_ONLY TRUE
++        PATCHES
++            "${CMAKE_CURRENT_LIST_DIR}/imgui-emscripten.patch"
++            "${CMAKE_CURRENT_LIST_DIR}/imgui-loader.patch"
++    )
++
++    set(IMGUI_SOURCES
++        imgui_widgets.cpp
++        imgui_draw.cpp
++        imgui_demo.cpp
++        imgui.cpp
++        imgui_tables.cpp
++        misc/freetype/imgui_freetype.cpp
++        backends/imgui_impl_opengl3.cpp
++    )
+ 
+-if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+-    target_compile_definitions(TracyImGui PRIVATE "IMGUI_DISABLE_DEBUG_TOOLS" "IMGUI_DISABLE_DEMO_WINDOWS")
++    list(TRANSFORM IMGUI_SOURCES PREPEND "${ImGui_SOURCE_DIR}/")
++
++    add_library(TracyImGui STATIC EXCLUDE_FROM_ALL ${IMGUI_SOURCES})
++    target_include_directories(TracyImGui PUBLIC ${ImGui_SOURCE_DIR})
++    target_link_libraries(TracyImGui PUBLIC TracyFreetype)
++    target_compile_definitions(TracyImGui PRIVATE "IMGUI_ENABLE_FREETYPE")
++    #target_compile_definitions(TracyImGui PUBLIC "IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
++
++    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LEGACY)
++        find_package(X11 REQUIRED)
++        target_link_libraries(TracyImGui PUBLIC ${X11_LIBRARIES})
++    endif()
++
++    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
++        target_compile_definitions(TracyImGui PRIVATE "IMGUI_DISABLE_DEBUG_TOOLS" "IMGUI_DISABLE_DEMO_WINDOWS")
++    endif()
+ endif()
+ 
+ # NFD
+@@ -192,32 +285,57 @@ endif()
+ 
+ # PPQSort
+ 
+-CPMAddPackage(
+-    NAME PPQSort
+-    GITHUB_REPOSITORY GabTux/PPQSort
+-    VERSION 1.0.6
+-    PATCHES
+-        "${CMAKE_CURRENT_LIST_DIR}/ppqsort-nodebug.patch"
+-    EXCLUDE_FROM_ALL TRUE
+-)
++if(USE_SYSTEM_PACKAGES)
++    find_path(PPQSORT_INCLUDE_DIR NAMES ppqsort.h REQUIRED)
++    add_library(PPQSort INTERFACE IMPORTED)
++    target_include_directories(PPQSort INTERFACE ${PPQSORT_INCLUDE_DIR})
++    add_library(PPQSort::PPQSort ALIAS PPQSort)
++else()
++    CPMAddPackage(
++        NAME PPQSort
++        GITHUB_REPOSITORY GabTux/PPQSort
++        VERSION 1.0.6
++        PATCHES
++            "${CMAKE_CURRENT_LIST_DIR}/ppqsort-nodebug.patch"
++        EXCLUDE_FROM_ALL TRUE
++    )
++endif()
++
++if(TRACY_SERVER_TOOLS_ONLY)
++    return()
++endif()
+ 
+ # json
+ 
+-CPMAddPackage(
+-    NAME json
+-    GITHUB_REPOSITORY nlohmann/json
+-    GIT_TAG v3.12.0
+-    EXCLUDE_FROM_ALL TRUE
+-)
++if(USE_SYSTEM_PACKAGES)
++    find_package(nlohmann_json REQUIRED)
++    add_library(json INTERFACE IMPORTED)
++    target_link_libraries(json INTERFACE nlohmann_json::nlohmann_json)
++else()
++    CPMAddPackage(
++        NAME json
++        GITHUB_REPOSITORY nlohmann/json
++        GIT_TAG v3.12.0
++        EXCLUDE_FROM_ALL TRUE
++    )
++endif()
+ 
+ # md4c
+ 
+-CPMAddPackage(
+-    NAME md4c
+-    GITHUB_REPOSITORY mity/md4c
+-    GIT_TAG release-0.5.2
+-    EXCLUDE_FROM_ALL TRUE
+-)
++if(USE_SYSTEM_PACKAGES)
++    find_library(MD4C_LIB NAMES md4c REQUIRED)
++    find_path(MD4C_INCLUDE_DIR NAMES md4c.h REQUIRED)
++    add_library(md4c INTERFACE IMPORTED)
++    target_include_directories(md4c INTERFACE ${MD4C_INCLUDE_DIR})
++    target_link_libraries(md4c INTERFACE ${MD4C_LIB})
++else()
++    CPMAddPackage(
++        NAME md4c
++        GITHUB_REPOSITORY mity/md4c
++        GIT_TAG release-0.5.2
++        EXCLUDE_FROM_ALL TRUE
++    )
++endif()
+ 
+ if(NOT EMSCRIPTEN)
+ 
+@@ -225,36 +343,60 @@ if(NOT EMSCRIPTEN)
+ 
+     set(BUILD_SHARED_LIBS_SAVE ${BUILD_SHARED_LIBS})
+     set(BUILD_SHARED_LIBS OFF)
+-    CPMAddPackage(
+-        NAME base64
+-        GITHUB_REPOSITORY aklomp/base64
+-        GIT_TAG v0.5.2
+-        OPTIONS
+-            "BASE64_BUILD_CLI OFF"
+-            "BASE64_WITH_OpenMP OFF"
+-        EXCLUDE_FROM_ALL TRUE
+-    )
++    if(USE_SYSTEM_PACKAGES)
++        find_library(BASE64_LIB NAMES base64 REQUIRED)
++        find_path(BASE64_INCLUDE_DIR NAMES libbase64.h PATH_SUFFIXES libbase64 REQUIRED)
++        add_library(base64 INTERFACE IMPORTED)
++        target_include_directories(base64 INTERFACE ${BASE64_INCLUDE_DIR})
++        target_link_libraries(base64 INTERFACE ${BASE64_LIB})
++    else()
++        CPMAddPackage(
++            NAME base64
++            GITHUB_REPOSITORY aklomp/base64
++            GIT_TAG v0.5.2
++            OPTIONS
++                "BASE64_BUILD_CLI OFF"
++                "BASE64_WITH_OpenMP OFF"
++            EXCLUDE_FROM_ALL TRUE
++        )
++    endif()
+     set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVE})
+ 
+     # tidy
+ 
+-    CPMAddPackage(
+-        NAME tidy
+-        GITHUB_REPOSITORY htacg/tidy-html5
+-        GIT_TAG 5.8.0
+-        PATCHES
+-            "${CMAKE_CURRENT_LIST_DIR}/tidy-cmake.patch"
+-        EXCLUDE_FROM_ALL TRUE
+-    )
++    if(USE_SYSTEM_PACKAGES)
++        find_library(TIDY_LIB NAMES tidy tidy-static REQUIRED)
++        find_path(TIDY_INCLUDE_DIR NAMES tidy.h PATH_SUFFIXES tidy REQUIRED)
++        add_library(tidy-static INTERFACE IMPORTED)
++        target_include_directories(tidy-static INTERFACE ${TIDY_INCLUDE_DIR})
++        target_link_libraries(tidy-static INTERFACE ${TIDY_LIB})
++    else()
++        CPMAddPackage(
++            NAME tidy
++            GITHUB_REPOSITORY htacg/tidy-html5
++            GIT_TAG 5.8.0
++            PATCHES
++                "${CMAKE_CURRENT_LIST_DIR}/tidy-cmake.patch"
++            EXCLUDE_FROM_ALL TRUE
++        )
++    endif()
+ 
+     # usearch
+ 
+-    CPMAddPackage(
+-        NAME usearch
+-        GITHUB_REPOSITORY unum-cloud/usearch
+-        GIT_TAG v2.21.3
+-        EXCLUDE_FROM_ALL TRUE
+-    )
++    if(USE_SYSTEM_PACKAGES)
++        find_path(USEARCH_INCLUDE_DIR NAMES usearch/index.hpp REQUIRED)
++        find_path(FP16_INCLUDE_DIR NAMES fp16/fp16.h REQUIRED)
++        add_library(usearch INTERFACE IMPORTED)
++        target_include_directories(usearch INTERFACE ${USEARCH_INCLUDE_DIR} ${FP16_INCLUDE_DIR})
++        target_compile_definitions(usearch INTERFACE USEARCH_USE_FP16LIB=1)
++    else()
++        CPMAddPackage(
++            NAME usearch
++            GITHUB_REPOSITORY unum-cloud/usearch
++            GIT_TAG v2.21.3
++            EXCLUDE_FROM_ALL TRUE
++        )
++    endif()
+ 
+     # pugixml
+ 
+@@ -278,3 +396,3 @@ if(NOT EMSCRIPTEN)
+     # libcurl
+-    pkg_check_modules(LIBCURL libcurl>=7.87.0)
++    pkg_check_modules(LIBCURL libcurl)
+         add_library(TracyLibcurl INTERFACE)
+         target_include_directories(TracyLibcurl INTERFACE ${LIBCURL_INCLUDE_DIRS})
+diff --git a/cmake/server.cmake b/cmake/server.cmake
+index dc3ba42d..941ac312 100644
+--- a/cmake/server.cmake
++++ b/cmake/server.cmake
+@@ -29,6 +29,7 @@ list(TRANSFORM TRACY_SERVER_SOURCES PREPEND "${TRACY_SERVER_DIR}/")
++find_package(Threads REQUIRED)
+ add_library(TracyServer STATIC EXCLUDE_FROM_ALL ${TRACY_COMMON_SOURCES} ${TRACY_SERVER_SOURCES})
+ target_include_directories(TracyServer PUBLIC ${TRACY_COMMON_DIR} ${TRACY_SERVER_DIR})
+-target_link_libraries(TracyServer PUBLIC TracyCapstone libzstd PPQSort::PPQSort)
++target_link_libraries(TracyServer PUBLIC TracyCapstone libzstd PPQSort::PPQSort Threads::Threads)
+ if(NO_STATISTICS)
+     target_compile_definitions(TracyServer PUBLIC TRACY_NO_STATISTICS)
+ endif()
+diff --git a/profiler/CMakeLists.txt b/profiler/CMakeLists.txt
+index 1681a64b..a0caf15d 100644
+--- a/profiler/CMakeLists.txt
++++ b/profiler/CMakeLists.txt
+@@ -127,6 +127,10 @@ if(NOT EMSCRIPTEN)
+     )
+ endif()
+ 
++if(NO_FILESELECTOR)
++    add_compile_definitions(TRACY_NO_FILESELECTOR)
++endif()
++
+ list(TRANSFORM SERVER_FILES PREPEND "src/profiler/")
+ 
+ set(PROFILER_FILES
+@@ -214,7 +218,7 @@ elseif(EMSCRIPTEN)
+ else()
+     set(PROFILER_FILES ${PROFILER_FILES}
+         src/BackendGlfw.cpp
+-        ${ImGui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
++        ${IMGUI_GLFW_BACKEND_SOURCE}
+     )
+ endif()
+ 
+@@ -246,12 +250,17 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
+     nlohmann_json::nlohmann_json
+     md4c
+ )
+-target_include_directories(${PROJECT_NAME} PRIVATE
+-    ${tidy_SOURCE_DIR}/include
+-)
+-target_include_directories(${PROJECT_NAME} PRIVATE
+-    ${md4c_SOURCE_DIR}/src
+-)
++if(USE_SYSTEM_PACKAGES)
++    target_include_directories(${PROJECT_NAME} PRIVATE
++        ${TIDY_INCLUDE_DIR}
++        ${MD4C_INCLUDE_DIR}
++    )
++else()
++    target_include_directories(${PROJECT_NAME} PRIVATE
++        ${tidy_SOURCE_DIR}/include
++        ${md4c_SOURCE_DIR}/src
++    )
++endif()
+ 
+ if(NOT EMSCRIPTEN)
+     target_link_libraries(${PROJECT_NAME} PRIVATE
+-- 
+2.25.1

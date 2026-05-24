@@ -1,0 +1,29 @@
+From 575703cfffbd9ae1bd7889568b984303cb43c865 Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sun, 24 May 2026 18:11:00 +0300
+Subject: [PATCH] profiler: respect toolchain IPO setting
+
+Do not force CMAKE_INTERPROCEDURAL_OPTIMIZATION on when the
+toolchain or recipe has already set it.
+
+Upstream-Status: Pending
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ cmake/config.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmake/config.cmake b/cmake/config.cmake
+index 611506fc..ceff3198 100644
+--- a/cmake/config.cmake
++++ b/cmake/config.cmake
+@@ -43,7 +43,7 @@ if(EMSCRIPTEN)
+     add_compile_options(-pthread -DIMGUI_IMPL_OPENGL_ES2)
+ endif()
+ 
+-if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT EMSCRIPTEN)
++if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT EMSCRIPTEN)
+     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+ endif()
+ 
+-- 
+2.25.1
