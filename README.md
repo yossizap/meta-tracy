@@ -28,7 +28,7 @@ This layer depends on:
 Tested:
 - Yocto Scarthgap (5.0 LTS), qemux86-64
 
-Not validated in this tree:
+Expected:
 - Yocto Kirkstone (4.0 LTS)
 
 ## Maintainer
