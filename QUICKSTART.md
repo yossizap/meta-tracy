@@ -110,6 +110,43 @@ bitbake core-image-minimal-tracy-cuda
 The CUDA image extends `core-image-minimal-tracy` and adds `tracy-cuda-test`.
 The normal Tracy tools and examples remain in the image.
 
+## Host CUDA Check
+
+When `meta-tegra` is present, host CUDA validation can use the native CUDA
+packages from that layer. Enable the opt-in native distro feature:
+
+```conf
+DISTRO_FEATURES_NATIVE:append = " tracy-cuda-native"
+```
+
+Then build:
+
+```bash
+bitbake tracy-cuda-test-native
+bitbake -c addto_recipe_sysroot tracy-cuda-test-native
+oe-run-native tracy-cuda-test-native tracy-cuda-test
+```
+
+To capture a CUDA trace from the host, start capture first:
+
+```bash
+oe-run-native tracy-capture-native tracy-capture \
+    -o native-cuda-test.tracy \
+    -a 127.0.0.1 \
+    -p 8086 \
+    -s 2
+```
+
+Then run the validation binary in another shell:
+
+```bash
+oe-run-native tracy-cuda-test-native tracy-cuda-test
+oe-run-native tracy-csvexport-native tracy-csvexport native-cuda-test.tracy
+oe-run-native tracy-profiler-native tracy-profiler native-cuda-test.tracy
+```
+
+This does not affect target images or `tracy-profiler-native`.
+
 ## Integrating Tracy
 
 Add the client library to your recipe:

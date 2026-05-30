@@ -97,6 +97,43 @@ The CUDA support lives under `dynamic-layers/meta-tegra`, so BitBake only
 parses it when the `tegra` collection is present. The validation recipe
 requires the `cuda` machine feature and only matches Tegra machines.
 
+## Native CUDA Build
+
+With meta-tegra present, `tracy-cuda-test-native` checks that the same Tracy
+CUDA instrumentation builds against the host CUDA packages from meta-tegra.
+The recipe requires this native distro feature:
+
+```conf
+DISTRO_FEATURES_NATIVE:append = " tracy-cuda-native"
+```
+
+The native binary is separate from `tracy-profiler-native`; the profiler does
+not need CUDA to open traces with CUDA events.
+
+This host validation completed on an NVIDIA RTX A4000 with driver 570.133.07:
+
+```bash
+bitbake tracy-cuda-test-native
+bitbake -c addto_recipe_sysroot tracy-cuda-test-native
+oe-run-native tracy-cuda-test-native tracy-cuda-test
+```
+
+Host capture of the same binary also completed:
+
+```bash
+oe-run-native tracy-capture-native tracy-capture \
+    -o native-cuda-test.tracy \
+    -a 127.0.0.1 \
+    -p 8086 \
+    -s 2
+
+oe-run-native tracy-cuda-test-native tracy-cuda-test
+oe-run-native tracy-csvexport-native tracy-csvexport native-cuda-test.tracy
+oe-run-native tracy-profiler-native tracy-profiler native-cuda-test.tracy
+```
+
+The resulting trace had CUDA zones and opened in `tracy-profiler-native`.
+
 ## Notes
 
 - qemux86-64's default 256 MB memory did not give `tracy-test` enough room for

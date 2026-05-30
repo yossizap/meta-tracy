@@ -18,6 +18,7 @@ dependency downloads.
 - **tracy-test**: Test application demonstrating Tracy features
 - **tracy-fibers**: Example demonstrating fiber tracking
 - **tracy-cuda-test**: Optional Tegra CUDA validation binary when `meta-tegra` is in `BBLAYERS`
+- **tracy-cuda-test-native**: Optional host CUDA validation binary gated by `tracy-cuda-native`
 
 ## Dependencies
 
@@ -69,12 +70,25 @@ and `Upstream-Status`.
    bitbake core-image-minimal-tracy-cuda
    ```
 
-5. Populate the native sysroot for host tools:
+5. To check host CUDA instrumentation through meta-tegra's native CUDA packages,
+   add `tracy-cuda-native` to `DISTRO_FEATURES_NATIVE` and build the optional
+   native validation binary:
+   ```
+   DISTRO_FEATURES_NATIVE:append = " tracy-cuda-native"
+   ```
+   Then build:
+   ```
+   bitbake tracy-cuda-test-native
+   bitbake -c addto_recipe_sysroot tracy-cuda-test-native
+   oe-run-native tracy-cuda-test-native tracy-cuda-test
+   ```
+
+6. Populate the native sysroot for host tools:
    ```
    bitbake -c addto_recipe_sysroot tracy-profiler-native tracy-capture-native tracy-csvexport-native
    ```
 
-6. Run native host tools through the Yocto native sysroot:
+7. Run native host tools through the Yocto native sysroot:
    ```
    oe-run-native tracy-capture-native tracy-capture --help
    oe-run-native tracy-csvexport-native tracy-csvexport --help
