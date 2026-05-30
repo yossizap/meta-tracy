@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sun, 24 May 2026 17:18:44 +0300
+Subject: [PATCH] profiler: support CMake 3.22
+
+Kirkstone provides CMake 3.22.3 and curl 7.82.0. The profiler build
+only needs one CMake 3.25 feature on the Yocto path: return(PROPAGATE)
+in the embed helper. Use the older PARENT_SCOPE form and lower the
+declared minimum.
+
+Guard curl symbols added after 7.82 so the profiler can also build
+against Kirkstone's curl headers.
+
+Upstream-Status: Inappropriate [kirkstone compatibility]
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ profiler/CMakeLists.txt                 | 4 ++--
+ profiler/src/profiler/TracyLlmApi.cpp   | 6 ++++++
+ profiler/src/profiler/TracyLlmTools.cpp | 2 ++
+ 3 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/profiler/CMakeLists.txt b/profiler/CMakeLists.txt
+index 1681a64b..2f39325d 100644
+--- a/profiler/CMakeLists.txt
++++ b/profiler/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.25)
++cmake_minimum_required(VERSION 3.22)
+ 
+ option(NO_FILESELECTOR "Disable the file selector" OFF)
+ option(GTK_FILESELECTOR "Use the GTK file selector on Linux instead of the xdg-portal one" OFF)
+@@ -51,7 +51,7 @@ function(Embed LIST NAME FILE)
+         DEPENDS data embed ${CMAKE_CURRENT_LIST_DIR}/${FILE}
+     )
+     list(APPEND ${LIST} data/${NAME}.cpp)
+-    return(PROPAGATE ${LIST})
++    set(${LIST} "${${LIST}}" PARENT_SCOPE)
+ endfunction()
+ 
+ set(SERVER_FILES
+diff --git a/profiler/src/profiler/TracyLlmApi.cpp b/profiler/src/profiler/TracyLlmApi.cpp
+index 16dc09f7..3625686f 100644
+--- a/profiler/src/profiler/TracyLlmApi.cpp
++++ b/profiler/src/profiler/TracyLlmApi.cpp
+@@ -5,6 +5,10 @@
+ 
+ #include "TracyLlmApi.hpp"
+ 
++#ifndef CURL_WRITEFUNC_ERROR
++#  define CURL_WRITEFUNC_ERROR 0
++#endif
++
+ namespace tracy
+ {
+ 
+@@ -26,6 +26,8 @@ void TracyLlmApi::SetupCurl( void* curl )
+ {
+     curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
++#ifdef CURLOPT_CA_CACHE_TIMEOUT
+     curl_easy_setopt( curl, CURLOPT_CA_CACHE_TIMEOUT, 604800L );
++#endif
+     curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );
+     curl_easy_setopt( curl, CURLOPT_TIMEOUT, 300 );
+     curl_easy_setopt( curl, CURLOPT_USERAGENT, "Tracy Profiler" );
+diff --git a/profiler/src/profiler/TracyLlmTools.cpp b/profiler/src/profiler/TracyLlmTools.cpp
+index 9df12051..2f166b89 100644
+--- a/profiler/src/profiler/TracyLlmTools.cpp
++++ b/profiler/src/profiler/TracyLlmTools.cpp
+@@ -364,6 +364,8 @@ static std::string DownloadResource( const std::string& url )
+     curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
+     curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
++#ifdef CURLOPT_CA_CACHE_TIMEOUT
+     curl_easy_setopt( curl, CURLOPT_CA_CACHE_TIMEOUT, 604800L );
++#endif
+     curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );
+     curl_easy_setopt( curl, CURLOPT_TIMEOUT, 10 );
+     curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, WriteFn );

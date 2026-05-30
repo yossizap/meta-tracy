@@ -1,0 +1,160 @@
+From adda8bb99433efe29c067ce81a6cc14bbaa32a92 Mon Sep 17 00:00:00 2001
+From: yossizap <yossizap@gmail.com>
+Date: Sat, 30 May 2026 11:48:00 +0300
+Subject: [PATCH] profiler: use range-v3 for LLM ranges code
+
+Build the profiler with range-v3 on hosts whose libstdc++ does not
+provide the C++20 ranges algorithms used by the LLM helper code.
+
+Upstream-Status: Inappropriate [host toolchain compatibility for Yocto native builds]
+Signed-off-by: yossizap <yossizap@gmail.com>
+---
+ profiler/src/profiler/TracyLlm.cpp      |  7 +++----
+ profiler/src/profiler/TracyLlmApi.cpp   |  2 +-
+ profiler/src/profiler/TracyLlmApi.hpp   |  3 +++
+ profiler/src/profiler/TracyLlmTools.cpp | 16 ++++++++--------
+ 4 files changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/profiler/src/profiler/TracyLlm.cpp b/profiler/src/profiler/TracyLlm.cpp
+index e5eafb33..7cb21e9e 100644
+--- a/profiler/src/profiler/TracyLlm.cpp
++++ b/profiler/src/profiler/TracyLlm.cpp
+@@ -2,7 +2,6 @@
+ #include <curl/curl.h>
+ #include <stdint.h>
+ #include <stdlib.h>
+-#include <ranges>
+ 
+ #include "TracyConfig.hpp"
+ #include "TracyImGui.hpp"
+@@ -606,7 +605,7 @@ void TracyLlm::UpdateModels()
+     m_embedIdx = -1;
+ 
+     auto& models = m_api->GetModels();
+-    auto it = std::ranges::find_if( models, []( const auto& model ) { return model.name == s_config.llmModel; } );
++    auto it = ranges::find_if( models, []( const auto& model ) { return model.name == s_config.llmModel; } );
+     if( it == models.end() )
+     {
+         for( int i=0; i<models.size(); i++ )
+@@ -623,7 +622,7 @@ void TracyLlm::UpdateModels()
+         m_modelIdx = std::distance( models.begin(), it );
+     }
+ 
+-    it = std::ranges::find_if( models, []( const auto& model ) { return model.name == s_config.llmEmbeddingsModel; } );
++    it = ranges::find_if( models, []( const auto& model ) { return model.name == s_config.llmEmbeddingsModel; } );
+     if( it == models.end() )
+     {
+         for( int i=0; i<models.size(); i++ )
+@@ -753,7 +752,7 @@ void TracyLlm::ManageContext( std::unique_lock<std::mutex>& lock )
+     if( toolOutputs.size() > 1 )
+     {
+         toolOutputs.pop_back();     // keep the last tool output
+-        std::ranges::stable_sort( toolOutputs, []( const auto& a, const auto& b ) { return a.first > b.first; } );
++        ranges::stable_sort( toolOutputs, []( const auto& a, const auto& b ) { return a.first > b.first; } );
+         for( auto& v : toolOutputs )
+         {
+             auto tokens = m_api->Tokenize( m_chat[v.second]["content"].get_ref<const std::string&>(), m_modelIdx );
+diff --git a/profiler/src/profiler/TracyLlmApi.cpp b/profiler/src/profiler/TracyLlmApi.cpp
+index a1832faa..222353ec 100644
+--- a/profiler/src/profiler/TracyLlmApi.cpp
++++ b/profiler/src/profiler/TracyLlmApi.cpp
+@@ -102,7 +102,7 @@ bool TracyLlmApi::Connect( const char* url )
+         return false;
+     }
+ 
+-    std::ranges::sort( m_models, []( const auto& a, const auto& b ) { return a.name < b.name; } );
++    ranges::sort( m_models, []( const auto& a, const auto& b ) { return a.name < b.name; } );
+ 
+     return true;
+ }
+diff --git a/profiler/src/profiler/TracyLlmApi.hpp b/profiler/src/profiler/TracyLlmApi.hpp
+index a1bb9d76..d574a3e5 100644
+--- a/profiler/src/profiler/TracyLlmApi.hpp
++++ b/profiler/src/profiler/TracyLlmApi.hpp
+@@ -2,6 +2,7 @@
+ #define __TRACYLLMAPI_HPP__
+ 
+ #include <functional>
++#include <range/v3/all.hpp>
+ #include <nlohmann/json.hpp>
+ #include <stdint.h>
+ #include <string>
+@@ -9,6 +10,8 @@
+ 
+ namespace tracy
+ {
++namespace ranges = ::ranges;
++
+ 
+ struct LlmModel
+ {
+diff --git a/profiler/src/profiler/TracyLlmTools.cpp b/profiler/src/profiler/TracyLlmTools.cpp
+index 870848dd..51f7b495 100644
+--- a/profiler/src/profiler/TracyLlmTools.cpp
++++ b/profiler/src/profiler/TracyLlmTools.cpp
+@@ -401,7 +401,7 @@ TracyLlmTools::ToolReply TracyLlmTools::SearchWikipedia( std::string query, cons
+ {
+     NetworkCheckReply;
+ 
+-    std::ranges::replace( query, ' ', '+' );
++    ranges::replace( query, ' ', '+' );
+     const auto response = FetchWebPage( "https://" + lang + ".wikipedia.org/w/rest.php/v1/search/page?q=" + UrlEncode( query ) + "&limit=1" );
+ 
+     auto json = nlohmann::json::parse( response );
+@@ -454,7 +454,7 @@ std::string TracyLlmTools::GetWikipedia( std::string page, const std::string& la
+ {
+     NetworkCheckString;
+ 
+-    std::ranges::replace( page, ' ', '_' );
++    ranges::replace( page, ' ', '_' );
+     auto res = FetchWebPage( "https://" + lang + ".wikipedia.org/w/rest.php/v1/page/" + page );
+ 
+     return TrimString( std::move( res ) );
+@@ -464,7 +464,7 @@ std::string TracyLlmTools::GetDictionary( std::string word, const std::string& l
+ {
+     NetworkCheckString;
+ 
+-    std::ranges::replace( word, ' ', '+' );
++    ranges::replace( word, ' ', '+' );
+     const auto response = FetchWebPage( "https://" + lang + ".wiktionary.org/w/rest.php/v1/search/page?q=" + UrlEncode( word ) + "&limit=1" );
+ 
+     auto json = nlohmann::json::parse( response );
+@@ -485,7 +485,7 @@ std::string TracyLlmTools::GetDictionary( std::string word, const std::string& l
+ static std::string RemoveNewline( std::string str )
+ {
+     std::erase( str, '\r' );
+-    std::ranges::replace( str, '\n', ' ' );
++    ranges::replace( str, '\n', ' ' );
+     return str;
+ }
+ 
+@@ -684,8 +684,8 @@ std::string TracyLlmTools::GetWebpage( const std::string& url )
+     body.node().print( writer, nullptr, pugi::format_raw | pugi::format_no_declaration | pugi::format_no_escapes );
+ 
+     RemoveNewline( response );
+-    auto it = std::ranges::unique( response, []( char a, char b ) { return ( a == ' ' || a == '\t' ) && ( b == ' ' || b == '\t' ); } );
+-    response.erase( it.begin(), it.end() );
++    auto it = ranges::unique( response, []( char a, char b ) { return ( a == ' ' || a == '\t' ) && ( b == ' ' || b == '\t' ); } );
++    response.erase( it, response.end() );
+ 
+     response = TrimString( std::move( response ) );
+     m_webCache.emplace( url, response );
+@@ -716,14 +716,14 @@ std::string TracyLlmTools::SearchManual( const std::string& query, TracyLlmApi&
+     for( auto& item : embedding ) vec.emplace_back( item.get<float>() );
+ 
+     auto results = m_manualEmbeddings->Search( vec, MaxSearchResults );
+-    std::ranges::sort( results, []( const auto& a, const auto& b ) { return a.distance < b.distance; } );
++    ranges::sort( results, []( const auto& a, const auto& b ) { return a.distance < b.distance; } );
+ 
+     std::vector<std::pair<int, float>> chunks;
+     chunks.reserve( results.size() );
+     for( auto& item : results )
+     {
+         const auto chunk = m_manualEmbeddings->Get( item.idx );
+-        if( std::ranges::find_if( chunks, [chunk]( const auto& v ) { return v.first == chunk; } ) == chunks.end() ) chunks.emplace_back( chunk, item.distance );
++        if( ranges::find_if( chunks, [chunk]( const auto& v ) { return v.first == chunk; } ) == chunks.end() ) chunks.emplace_back( chunk, item.distance );
+     }
+     if( chunks.size() > MaxOutputChunks ) chunks.resize( MaxOutputChunks );
+ 
+-- 
+2.25.1
