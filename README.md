@@ -28,16 +28,26 @@ This layer depends on:
 Optional integration:
 - meta-tegra, for Tegra CUDA validation builds
 
-## Compatibility
+When meta-oe is present, its recipes take precedence over the common library
+recipes in this layer.
 
-Tested:
-- Yocto Scarthgap (5.0 LTS), qemux86-64
-- Yocto Kirkstone (4.0 LTS), qemux86-64
-- Yocto Kirkstone (4.0 LTS), `jetson-tx2-devkit-tx2i` with meta-tegra
+## Tested configurations
+
+- Scarthgap: `qemux86-64`
+- Kirkstone: `qemux86-64`
+- Kirkstone with meta-tegra: `jetson-tx2-devkit-tx2i` (image build)
+
+See [TESTING.md](TESTING.md) for the build and runtime checks. AGX Orin on
+Blacksail has not been validated with this layer.
 
 ## Maintainer
 
 - yossizap <yossizap@gmail.com>
+
+## Contributing
+
+Send patches and build reports to yossizap <yossizap@gmail.com>. Include the
+Yocto release, machine, and layers used when reporting a build failure.
 
 ## Patch Policy
 
