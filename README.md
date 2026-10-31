@@ -1,6 +1,6 @@
 # meta-tracy
 
-Yocto/OpenEmbedded layer for Tracy Profiler integration.
+Yocto/OpenEmbedded layer for the [Tracy Profiler](https://github.com/wolfpld/tracy).
 
 ## Description
 
@@ -11,24 +11,24 @@ dependency downloads.
 
 ## Components
 
-- **tracy-client**: Client library for profiling applications
-- **tracy-csvexport** / **tracy-csvexport-native**: CSV export utility for target and build host use
-- **tracy-capture** / **tracy-capture-native**: Capture utility for target and build host use
-- **tracy-profiler-native**: Native Tracy GUI profiler for the build host
-- **tracy-test**: Test application demonstrating Tracy features
-- **tracy-fibers**: Example demonstrating fiber tracking
-- **tracy-cuda-test**: Optional Tegra CUDA validation binary when `meta-tegra` is in `BBLAYERS`
+- **tracy-client**: [Client library](https://github.com/wolfpld/tracy/tree/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/public) for profiling applications
+- **tracy-csvexport** / **tracy-csvexport-native**: [CSV export utility](https://github.com/wolfpld/tracy/tree/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/csvexport) for target and build host use
+- **tracy-capture** / **tracy-capture-native**: [Capture utility](https://github.com/wolfpld/tracy/tree/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/capture) for target and build host use
+- **tracy-profiler-native**: [Tracy GUI profiler](https://github.com/wolfpld/tracy/tree/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/profiler) for the build host
+- **tracy-test**: Tracy's [test application](https://github.com/wolfpld/tracy/blob/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/test/test.cpp)
+- **tracy-fibers**: Tracy's [fiber example](https://github.com/wolfpld/tracy/blob/05cceee0df3b8d7c6fa87e9638af311dbabc63cb/examples/fibers.cpp)
+- **tracy-cuda-test**: This layer's [CUDA example](dynamic-layers/meta-tegra/recipes-devtools/tracy/files/tracy-cuda-test.cu), enabled when `meta-tegra` is in `BBLAYERS`
 - **tracy-cuda-test-native**: Optional host CUDA validation binary gated by `tracy-cuda-native`
 
 ## Dependencies
 
 This layer depends on:
-- meta (core layer)
+- [OpenEmbedded-Core `meta`](https://github.com/openembedded/openembedded-core/tree/scarthgap/meta)
 
 Optional integration:
-- meta-tegra, for Tegra CUDA validation builds
+- [meta-tegra](https://github.com/OE4T/meta-tegra), for Tegra CUDA validation builds
 
-When meta-oe is present, its recipes take precedence over the common library
+When [meta-oe](https://github.com/openembedded/meta-openembedded/tree/scarthgap/meta-oe) is present, its recipes take precedence over the common library
 recipes in this layer.
 
 ## Tested configurations

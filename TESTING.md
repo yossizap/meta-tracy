@@ -1,5 +1,8 @@
 # meta-tracy Validation Notes
 
+GitHub Actions runs `yocto-check-layer` and builds the target client, capture,
+and CSV export recipes on Scarthgap and Kirkstone with meta-oe present.
+
 Validated with Poky Scarthgap on qemux86-64 using a local build directory.
 Kirkstone was also checked with qemux86-64 and with a meta-tegra Jetson TX2i
 configuration.
